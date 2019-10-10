@@ -23,79 +23,11 @@ class NotarizationPlugin : Plugin<Project> {
         createStapleAndPublishTasks(notarizationExtension)
     }
 
-    private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
-        project.tasks.register("pollAndWriteJsonTicket") {task ->
-            task.group = "notarization"
-            task.doLast {
-                val bundleResponseUrlList = ArrayList<Pair<String, String>>()
-                // todo: coroutine this so we don't block
-
-                // polling
-                bundleUUIDList.forEach { pair ->
-                    val bundleId = pair.first
-                    val uuid = pair.second
-                    println("Bundle Id: '$bundleId', UUID: '$uuid'")
-
-                    val notarizationStdOut = executeQueryNotarizationService(uuid, notarizationExtension)
-                    var notarizationStatus = parseNotarizationInfo(notarizationStdOut.toString())
-                    // check the pair until we receive true for first
-                    while (!notarizationStatus.first) {
-                        Thread.sleep(1800000L) // 30 min
-                        notarizationStatus =
-                            parseNotarizationInfo(executeQueryNotarizationService(uuid, notarizationExtension).toString())
-                        //todo: write tests
-                    }
-
-                    // query and save the results of the notarization
-                    val baos = ByteArrayOutputStream()
-                    project.exec { execSpec ->
-                        execSpec.standardOutput = baos
-                        execSpec.executable = "curl"
-                        execSpec.args(arrayOf(notarizationStatus.second))
-                    }
-                    println(baos.toString())
-                    bundleResponseUrlList.add(Pair(bundleId, baos.toString()))
-                }
-
-                // writes contents out to file
-                bundleResponseUrlList.forEach {pair ->
-                    val ticketFile = File(workingDir, "${pair.first}.notarization.json")
-                    ticketFile.apply {
-                        writeText(pair.second)
-                    }
-                    // todo: write test
-                }
-            }
-        }
-
-        project.tasks.register("stapleRecursivelyAndValidate") {task ->
-            task.group = "notarization"
-
-            task.doLast {
-                workingDir.walkTopDown().forEach { file ->
-                    project.exec { execSpec ->
-                        execSpec.executable = "stapler"
-                        execSpec.args(arrayOf("staple", file))
-                    }
-                    project.exec { execSpec ->
-                        execSpec.executable = "stapler"
-                        execSpec.args(arrayOf("validate", file))
-                    }
-                }
-            }
-        }
-
-        // ordering
-        project.tasks.named("stapleRecursivelyAndValidate") {task ->
-            task.dependsOn(project.tasks.named("pollAndWriteJsonTicket"))
-        }
-    }
-
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
-        addBinariesToBinariesList(notarizationExtension)
+        val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
+//        addBinariesToBinariesList(notarizationExtension)
 
         val localReleaseDir = "${LocalDateTime.now()}-notarized-batch"
-        val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
         val devbuildsReleaseDir = File("~/devbuilds_release/")
 
         project.tasks.register("mountAndCreateDirectories") {task ->
@@ -134,8 +66,6 @@ class NotarizationPlugin : Plugin<Project> {
             task.dependsOn(project.tasks.named("mountAndCreateDirectories"))
         }
     }
-
-
 
     private fun createNotarizationMainTasks(notarizationExtension: NotarizationPluginExtension) {
         // only binaries allowed [.pkg,.zip,.dmg]
@@ -204,7 +134,7 @@ class NotarizationPlugin : Plugin<Project> {
                         // todo: parse output for RequestUUID and save it
                         val requestUUID: String = parseUUIDFromResultOutput(notarizationResult)
                         bundleUUIDList.add(Pair(file.name.toBundleId(), requestUUID))
-                }
+                    }
             }
         }
 
@@ -214,9 +144,90 @@ class NotarizationPlugin : Plugin<Project> {
         }
     }
 
+    private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
+        project.tasks.register("pollAndWriteJsonTicket") {task ->
+            task.group = "notarization"
+            task.doLast {
+                val bundleResponseUrlList = ArrayList<Pair<String, String>>()
+                // todo: coroutine this so we don't block
+
+                // polling
+                bundleUUIDList.forEach { pair ->
+                    val bundleId = pair.first
+                    val uuid = pair.second
+                    println("Bundle Id: '$bundleId', UUID: '$uuid'")
+
+                    val notarizationStdOut = executeQueryNotarizationService(uuid, notarizationExtension)
+                    var notarizationStatus = parseNotarizationInfo(notarizationStdOut.toString())
+                    // check the pair until we receive true for first
+                    while (!notarizationStatus.first) {
+                        Thread.sleep(1800000L) // 30 min
+                        notarizationStatus =
+                            parseNotarizationInfo(executeQueryNotarizationService(uuid, notarizationExtension).toString())
+                        //todo: write tests
+                    }
+
+                    // query and save the results of the notarization
+                    val baos = ByteArrayOutputStream()
+                    project.exec { execSpec ->
+                        execSpec.standardOutput = baos
+                        execSpec.executable = "curl"
+                        execSpec.args(arrayOf(notarizationStatus.second))
+                    }
+                    println(baos.toString())
+                    bundleResponseUrlList.add(Pair(bundleId, baos.toString()))
+                }
+
+                // writes contents out to file
+                bundleResponseUrlList.forEach {pair ->
+                    val ticketFile = File(workingDir, "${pair.first}.notarization.json")
+                    ticketFile.apply {
+                        writeText(pair.second)
+                    }
+                    // todo: write test
+                }
+            }
+        }
+
+        project.tasks.register("stapleRecursivelyAndValidate") {task ->
+            task.group = "notarization"
+
+            task.doLast {
+                workingDir.walkTopDown().forEach { file ->
+                    project.exec { execSpec ->
+                        execSpec.executable = "stapler"
+                        execSpec.args(arrayOf("staple", file))
+                    }
+                    project.exec { execSpec ->
+                        execSpec.executable = "stapler"
+                        execSpec.args(arrayOf("validate", file))
+                    }
+                }
+            }
+        }
+
+        // ordering
+        project.tasks.named("stapleRecursivelyAndValidate") {task ->
+            task.dependsOn(project.tasks.named("pollAndWriteJsonTicket"))
+        }
+    }
+
     // private methods
     private fun parseShareLocation(fileList: File?): String {
+        // will be in the format \\devbuilds\$serverLocation\$path or \\$mainServer\$serverLocation\$path
+        val strBuffer = StringBuilder()
         // todo: make this real, for now default to devbuilds/release
+        fileList?.readLines()?.forEach { line ->
+            println("found: $line")
+            val mountFolder = "${System.getProperty("user.home")}/devbuilds_release"
+            strBuffer.append(line.replace("\\", "/")
+                .replace("//devbuilds/release", mountFolder)
+                .replace("//devbuilds/maestro", mountFolder) + "\n"
+            )
+        }
+        fileList?.apply {
+            writeText(strBuffer.toString())
+        }
         return "builder@devbuilds/release"
     }
 
@@ -297,16 +308,25 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun addBinariesToBinariesList(notarizationExtension: NotarizationPluginExtension) {
-        if (notarizationExtension.workingDir != null) {
-            notarizationExtension.binariesList.addAll(
-                File(notarizationExtension.workingDir ?: notarizationExtension.workspaceRootDir!!)
-                    .listFiles().toList() as ArrayList<File>
-            )
+        if (notarizationExtension.workingDir == null) {
+//            throw GradleException("No working dir to pull binaries from!")
         }
+
+        notarizationExtension.binariesList.addAll(
+            parseBinariesFromFileList(notarizationExtension.fileList)
+        )
+    }
+
+    fun parseBinariesFromFileList(listFile: File?): ArrayList<File> {
+        // todo: at this point the file should be cleansed and redirected to the mounted folder
+        val fileStringList = listFile?.readLines()
+        println(fileStringList)
+        return fileStringList?.groupBy { File(it) }?.keys!! as ArrayList<File>
     }
 }
 
 fun String.toBundleId(): String = this.replace("-", ".")
+
 open class NotarizationPluginExtension {
 
     var fileList: File? = null

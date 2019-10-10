@@ -17,12 +17,22 @@ class NotarizationPluginTests : Spek({
         "security unlock-keychain -p password /Users/builder/Library/Keychains/TableauBuilder.keychain-db ".execute()
         val plugin = NotarizationPlugin()
         val temporaryDir = Files.createTempDir()
+        val extension = NotarizationPluginExtension()
         val project = ProjectBuilder.builder()
             .withProjectDir(temporaryDir)
             .withName("notarization-test-project")
             .build()
         it("applies to projects") {
-            plugin.apply(project)
+            extension.appSpecificPassword = "somepassword"
+            extension.appleId = "someName@tableau.com"
+            extension.fileList = File("${System.getProperty("user.dir")}/src/test/resources/fakeFileList.txt")
+            extension.certificateId = "some certificate that I swear is real"
+            extension.workingDir = "${System.getProperty("user.home")}/releases_notarized"
+            extension.workspaceRootDir = "${System.getProperty("user.home")}/p4"
+
+            plugin.project = project
+            plugin.workingDir = File(extension.workingDir)
+//            plugin.apply(project)
         }
 
         it("parses uuid from output") {

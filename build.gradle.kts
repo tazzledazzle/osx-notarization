@@ -5,10 +5,6 @@ plugins {
     id("com.tableau.NotarizationPlugin")
 }
 
-repositories {
-    mavenCentral()
-}
-
 version = "1.0"
 
 dependencies {
@@ -21,6 +17,7 @@ tasks.withType<KotlinCompile> {
 
 //project.extensions.get("notarization")  {
     notarization {
+        fileList = File("src/test/resources/fakeFileList")
         workingDir = "/Users/tschumacher/installers-2019.3"
         appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
         appleId = "tschumacher@tableau.com"

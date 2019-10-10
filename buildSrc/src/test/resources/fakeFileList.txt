@@ -1,0 +1,3 @@
+\\devbuilds\release\2019.3.0\rc6_server_only\tableau-2019-3.19.0913.2225\releases\oem\Basware\tableau-setup-Basware-en_US-tableau-2019-3.19.0913.2225.dmg
+\\devbuilds\release\2019.3.0\rc6_server_only\tableau-2019-3.19.0913.2225\releases\oem\Rudolph\tableau-setup-Rudolph-en_US-tableau-2019-3.19.0913.2225.dmg
+\\devbuilds\maestro\maestro-2019-3\maestro-2019-3.19.0923.1415\installers\tableau-setup-prep-maestro-2019-3.19.31.19.0923.1415.dmg
