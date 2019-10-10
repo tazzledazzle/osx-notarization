@@ -1,11 +1,22 @@
 package com.tableau.gradle.notarization
 
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newFixedThreadPoolContext
+import kotlinx.coroutines.runBlocking
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.Copy
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.time.LocalDateTime
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
+import java.util.function.Supplier
 
 class NotarizationPlugin : Plugin<Project> {
     private val CODE_NOT_SIGNED_TEXT: String = "code object is not signed at all"
@@ -13,6 +24,7 @@ class NotarizationPlugin : Plugin<Project> {
     lateinit var workingDir: File
     lateinit var workspaceRootDir: File
     private val bundleUUIDList = ArrayList<Pair<String, String>>()
+    private val bundleUUIDListFile = File("out/bundleUUIDList.txt")
 
     override fun apply(target: Project) {
         project = target
@@ -133,7 +145,7 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
         // todo: ensure signing control flow
-        project.tasks.register("postToNoarizationService") {task ->
+        project.tasks.register("postToNoarizationService") { task ->
             task.group = "notarization"
             task.dependsOn(project.tasks.named("checkAndSign"))
 
@@ -152,7 +164,7 @@ class NotarizationPlugin : Plugin<Project> {
                                 file.absolutePath
                             )
                         }
-                        println(baos.toString())
+//                        println(baos.toString())
 
 
                         val notarizationResult: String = baos.toString()
@@ -161,51 +173,93 @@ class NotarizationPlugin : Plugin<Project> {
                         bundleUUIDList.add(Pair(file.name.toBundleId(), requestUUID))
                     }
             }
+            task.finalizedBy(project.tasks.named("writeBundleListToFile"))
+        }
+
+        project.tasks.register("writeBundleListToFile") { task ->
+            task.onlyIf { !(bundleUUIDList.size == 0 && bundleUUIDList.isEmpty()) }
+            task.doLast {
+                val bundleUUIDFile = bundleUUIDListFile
+                bundleUUIDFile.parentFile.mkdirs()
+                bundleUUIDList.forEach { pair ->
+                    bundleUUIDFile.apply {
+                        appendText(pair.first)
+                        appendText(pair.second)
+                    }
+                }
+            }
         }
     }
 
     private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
         project.tasks.register("pollAndWriteJsonTicket") {task ->
             task.group = "notarization"
-            task.dependsOn(project.tasks.named("postToNoarizationService"))
+//            task.dependsOn(project.tasks.named("postToNoarizationService"))
             task.doLast {
                 val bundleResponseUrlList = ArrayList<Pair<String, String>>()
                 // todo: coroutine this so we don't block
-
+                if (bundleUUIDList.size == 0 || bundleUUIDList.isEmpty()) {
+                    bundleUUIDList.addAll(populateListFromFile(bundleUUIDListFile))
+                }
+                val jobList = ArrayList<Job>()
+                val failedNotarizationList = ArrayList<FailedNotarizationQuery>()
                 // polling
                 bundleUUIDList.forEach { pair ->
-                    val bundleId = pair.first
-                    val uuid = pair.second
-                    println("Bundle Id: '$bundleId', UUID: '$uuid'")
+                    val job = GlobalScope.launch {
+                        val bundleId = pair.first
+                        val uuid = pair.second
+                        delay(100L)
+                        println("Bundle Id: '$bundleId', UUID: '$uuid'")
 
-                    val notarizationStdOut = executeQueryNotarizationService(uuid, notarizationExtension)
-                    var notarizationStatus = parseNotarizationInfo(notarizationStdOut.toString())
-                    // check the pair until we receive true for first
-                    while (!notarizationStatus.first) {
-                        Thread.sleep(1800000L) // 30 min
-                        notarizationStatus =
-                            parseNotarizationInfo(executeQueryNotarizationService(uuid, notarizationExtension).toString())
-                        //todo: write tests
-                    }
+                        val notarizationStdOut = executeQueryNotarizationService(uuid, notarizationExtension).toString()
+                        var notarizationStatus = parseNotarizationInfo(notarizationStdOut)
 
-                    // query and save the results of the notarization
-                    val baos = ByteArrayOutputStream()
-                    project.exec { execSpec ->
-                        execSpec.standardOutput = baos
-                        execSpec.executable = "curl"
-                        execSpec.args(arrayOf(notarizationStatus.second))
+                        //   check the pair until we receive true for first
+                        if (!notarizationStatus.first) {
+                            failedNotarizationList.add(FailedNotarizationQuery(
+                                bundleId = bundleId,
+                                uuid = uuid,
+                                status = notarizationStatus.first,
+                                notarizationExtension = notarizationExtension))
+                        }
+                        else {
+                        // query and save the results of the notarization
+                            addResponseToUrlList(notarizationStatus, bundleResponseUrlList, bundleId)
+                        }
                     }
-                    println(baos.toString())
-                    bundleResponseUrlList.add(Pair(bundleId, baos.toString()))
+                    jobList.add(job)
                 }
 
-                // writes contents out to file
-                bundleResponseUrlList.forEach {pair ->
-                    val ticketFile = File(workingDir, "${pair.first}.notarization.json")
-                    ticketFile.apply {
-                        writeText(pair.second)
+                for (job in jobList) {
+                    runBlocking { job.join() }
+                }
+                jobList.clear()
+
+                while(failedNotarizationList.size > 0) {
+                    runBlocking {
+                        delay(100L) // wait to start the process again
+                        val remainderList = failedNotarizationList
+                        remainderList.forEach { query ->
+                            val notarizationStdOut = executeQueryNotarizationService(query.uuid, query.notarizationExtension).toString()
+                            val notarizationStatus = parseNotarizationInfo(notarizationStdOut)
+
+                            //   check the pair until we receive true for first
+                            if (notarizationStatus.first) {
+                                // query and save the results of the notarization
+                                addResponseToUrlList(notarizationStatus, bundleResponseUrlList, query.bundleId)
+                                failedNotarizationList.remove(query)
+                            }
+                        }
                     }
-                    // todo: write test
+                }
+                // writes contents out to file
+                bundleResponseUrlList.forEach { pair ->
+                    val jsonFileName = "${pair.first}.notarization.json"
+                    val ticketFile = File(workingDir, jsonFileName)
+//                    ticketFile.apply {
+//                        writeText(pair.second)
+//                    }
+                    println("Writing '$ticketFile'...")
                 }
             }
         }
@@ -233,6 +287,30 @@ class NotarizationPlugin : Plugin<Project> {
             task.group = "notarization"
             task.dependsOn(project.tasks.named("stapleRecursivelyAndValidate"))
         }
+    }
+
+    private fun addResponseToUrlList(
+        notarizationStatus: Pair<Boolean, String?>,
+        bundleResponseUrlList: ArrayList<Pair<String, String>>,
+        bundleId: String
+    ) {
+        val baos = ByteArrayOutputStream()
+        project.exec { execSpec ->
+            execSpec.standardOutput = baos
+            execSpec.commandLine("curl", "${notarizationStatus.second}")
+        }
+
+        val jsonResponse = baos.toString()
+        bundleResponseUrlList.add(Pair(bundleId, jsonResponse))
+    }
+
+    private fun populateListFromFile(bundleUUIDListFile: File): ArrayList<Pair<String, String>> {
+        val lines = bundleUUIDListFile.readLines()
+        val pairsList = ArrayList<Pair<String, String>>()
+        for(i in 0 until lines.size step 2) {
+            pairsList.add(Pair(lines[i], lines[i + 1]))
+        }
+        return pairsList
     }
 
     // private methods
@@ -298,34 +376,23 @@ class NotarizationPlugin : Plugin<Project> {
             execSpec.standardOutput = baos
             execSpec.executable = "xcrun"
             execSpec.args(
-                arrayListOf(
                     "altool", "--notarization-info", uuid, "-u", notarizationExtension.appleId,
                     "-p", notarizationExtension.appSpecificPassword
-                )
             )
         }
         return baos
     }
 
     private fun parseNotarizationInfo(notarizationInfo: String): Pair<Boolean, String?> {
-        val sample = "2019-10-07 12:48:42.024 altool[19403:19482201] No errors getting notarization info.\n" +
-                "\n" +
-                "   RequestUUID: 6c56f7ee-67b3-47b1-9dff-2bdf1987c6e2\n" +
-                "          Date: 2019-10-07 19:11:58 +0000\n" +
-                "        Status: success\n" +
-                "    LogFileURL: https://osxapps-ssl.itunes.apple.com/itunes-assets/Enigma113/v4/68/0e/47/680e4799-91a2-45af-6c2d-885ee56c92b0/developer_log.json?accessKey=1570672121_2286566782519926408_9NW%2B1lVt6oqCsdIiuTHrR0VdH62WEYX5Xt2W7c8k%2BPDZ%2F1SB%2FxwSpZBT4COGlJAhwJ9ypHtbKLFa1ymJ3eUCjxnKGKdBZx7ncgdn6E2aPBCux4LYAqkjnTm1qmJ2wKx472%2FIN3NWbU0qtaov6UynhtQkZF%2FdwWSPRnNZeVBGFUA%3D\n" +
-                "   Status Code: 0\n" +
-                "Status Message: Package Approved"
         var status: Boolean = false
         var logFileUrl: String? = null
         notarizationInfo.split("\n").forEach { line ->
-            if (line.contains("Status")) {
+            if (line.contains("Status:")) {
                 val parts = line.split(": ")
                 status = parts[1].trim().contains("success")
-                //todo: write test
             }
 
-            if (line.contains("LogFileURL"))  {
+            if (line.contains("LogFileURL:"))  {
                 val parts = line.split(": ")
                 logFileUrl = parts[1].trim()
             }
@@ -350,7 +417,7 @@ class NotarizationPlugin : Plugin<Project> {
     fun parseBinariesFromFileList(listFile: File?): ArrayList<File> {
         // todo: at this point the file should be cleansed and redirected to the mounted folder
         val fileStringList = listFile?.readLines()
-        println(fileStringList)
+//        println(fileStringList)
         return fileStringList?.groupBy { File(it) }?.keys!! as ArrayList<File>
     }
 }
@@ -367,3 +434,35 @@ open class NotarizationPluginExtension {
     var workspaceRootDir: String? = null
     var certificateId: String? = null
 }
+
+//todo: broken here
+private suspend fun coexecute(str: String):  String? = runBlocking {
+    val parts = str.split("\\s".toRegex())
+    val proc = ProcessBuilder(*parts.toTypedArray())
+        .directory(File(System.getProperty("user.dir")))
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .redirectError(ProcessBuilder.Redirect.PIPE)
+        .start()
+
+    proc.waitFor()
+    proc.inputStream.bufferedReader().readText()
+}
+
+private fun String.execute(): String? {
+    return try {
+        val parts = this.split("\\s".toRegex())
+        val proc = ProcessBuilder(*parts.toTypedArray())
+            .directory(File(System.getProperty("user.dir")))
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .start()
+
+        proc.waitFor(60, TimeUnit.MINUTES)
+        proc.inputStream.bufferedReader().readText()
+    } catch(e: IOException) {
+        println(e.printStackTrace())
+        null
+    }
+}
+
+data class FailedNotarizationQuery(val bundleId: String, val uuid: String, val status: Boolean, val notarizationExtension: NotarizationPluginExtension)
