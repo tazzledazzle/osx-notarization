@@ -28,22 +28,27 @@ class NotarizationPlugin : Plugin<Project> {
 //        addBinariesToBinariesList(notarizationExtension)
 
         val localReleaseDir = "${LocalDateTime.now()}-notarized-batch"
-        val devbuildsReleaseDir = File("~/devbuilds_release/")
+        val devbuildsReleaseDir = File("${System.getProperty("user.home")}/devbuilds_release/")
 
-        project.tasks.register("mountAndCreateDirectories") {task ->
+        project.tasks.register("mountSmbfs") {task ->
             task.group = "notarization"
 
             task.doLast {
                 // mount dir
                 project.exec { execSpec ->
-                    execSpec.workingDir = File("~/")
+                    execSpec.workingDir = File("${System.getProperty("user.home")}/")
                     execSpec.executable = "mount"
                     execSpec.args(arrayOf("-t", "smbfs", "//$fileShareLocation", devbuildsReleaseDir))
                 }
+            }
+        }
 
+        project.tasks.register("createLocalReleaseDirectory"){ task ->
+            task.group = "notarization"
+            task.doLast {
                 // create release local dir
                 project.exec { execSpec ->
-                    execSpec.workingDir = File("~/releases_notarized")
+                    execSpec.workingDir = File("${System.getProperty("user.home")}/releases_notarized")
                     execSpec.executable = "mkdir"
                     //todo: parse the notary group's name?
                     execSpec.args(arrayOf("-p", localReleaseDir))
@@ -51,27 +56,29 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
         // copy to release local dir
-        project.tasks.register("copyBinariesFromShare", Copy::class.java) {copyTask ->
+        project.tasks.register("copyBinariesFromShare", Copy::class.java) { copyTask: Copy ->
             copyTask.group = "notarization"
+            copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
 
             // todo: need to replace the original path and replace the slashes
             copyTask.from(notarizationExtension.binariesList) // todo: may fail
             copyTask.into(localReleaseDir)
         }
 
-        // ordering
-        project.tasks.named("copyBinariesFromShare") {task ->
+        project.tasks.register("mountAndCreateLocalDir") {task ->
             task.group = "notarization"
-
-            task.dependsOn(project.tasks.named("mountAndCreateDirectories"))
+            task.dependsOn(project.tasks.named("mountSmbfs"),
+                project.tasks.named("createLocalReleaseDirectory"),
+                project.tasks.named("copyBinariesFromShare")
+            )
         }
     }
 
     private fun createNotarizationMainTasks(notarizationExtension: NotarizationPluginExtension) {
         // only binaries allowed [.pkg,.zip,.dmg]
-        project.tasks.register("checkAndZipApps"){task ->
+        project.tasks.register("zipApps"){task ->
             task.group = "notarization"
-
+            task.dependsOn(project.tasks.named("copyBinariesFromShare"))
             task.doLast {
                 workingDir.listFiles().filter { it.name.endsWith("app") }.forEach { file ->
                     // zip
@@ -84,10 +91,9 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        // todo: ensure signing control flow
-        project.tasks.register("notarize") {task ->
+        project.tasks.register("checkAndSign") { task ->
             task.group = "notarization"
-
+            task.dependsOn(project.tasks.named("zipApps"))
             task.doLast {
                 notarizationExtension
                     .binariesList
@@ -107,15 +113,34 @@ class NotarizationPlugin : Plugin<Project> {
                             project.exec { execSpec ->
                                 execSpec.executable = "codesign"
                                 execSpec.args(
-                                    "--deep", "--force", "--options", "runtime", "--entitlements",
+                                    "--deep",
+                                    "--force",
+                                    "--options",
+                                    "runtime",
+                                    "--entitlements",
                                     "${notarizationExtension.workspaceRootDir}/tableau-cmake/tableau/codesign/Entitlements.plist",
-                                    "--strict", "--timestamp", "--verbose", "--sign", "${notarizationExtension.certificateId}",
+                                    "--strict",
+                                    "--timestamp",
+                                    "--verbose",
+                                    "--sign",
+                                    "${notarizationExtension.certificateId}",
                                     "$file"
                                 )
                             }
                         }
                         println("bundle Id is ${file.name.toBundleId()}")
+                    }
+            }
+        }
+        // todo: ensure signing control flow
+        project.tasks.register("postToNoarizationService") {task ->
+            task.group = "notarization"
+            task.dependsOn(project.tasks.named("checkAndSign"))
 
+            task.doLast {
+                notarizationExtension
+                    .binariesList
+                    .forEach { file ->
                         // notarize
                         val baos = ByteArrayOutputStream()
                         project.exec { execSpec ->
@@ -137,16 +162,12 @@ class NotarizationPlugin : Plugin<Project> {
                     }
             }
         }
-
-        // ordering
-        project.tasks.named("notarize") {task ->
-            task.dependsOn(project.tasks.named("checkAndZipApps"))
-        }
     }
 
     private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
         project.tasks.register("pollAndWriteJsonTicket") {task ->
             task.group = "notarization"
+            task.dependsOn(project.tasks.named("postToNoarizationService"))
             task.doLast {
                 val bundleResponseUrlList = ArrayList<Pair<String, String>>()
                 // todo: coroutine this so we don't block
@@ -191,6 +212,7 @@ class NotarizationPlugin : Plugin<Project> {
 
         project.tasks.register("stapleRecursivelyAndValidate") {task ->
             task.group = "notarization"
+            task.dependsOn(project.tasks.named("pollAndWriteJsonTicket"))
 
             task.doLast {
                 workingDir.walkTopDown().forEach { file ->
@@ -206,28 +228,36 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        // ordering
-        project.tasks.named("stapleRecursivelyAndValidate") {task ->
-            task.dependsOn(project.tasks.named("pollAndWriteJsonTicket"))
+        // lifecycle task
+        project.tasks.register("notarize") {task ->
+            task.group = "notarization"
+            task.dependsOn(project.tasks.named("stapleRecursivelyAndValidate"))
         }
     }
 
     // private methods
-    private fun parseShareLocation(fileList: File?): String {
+    fun parseShareLocation(fileList: File?): String {
         // will be in the format \\devbuilds\$serverLocation\$path or \\$mainServer\$serverLocation\$path
+
         val strBuffer = StringBuilder()
         // todo: make this real, for now default to devbuilds/release
+        val locationSet = HashSet<String>()
+
         fileList?.readLines()?.forEach { line ->
             println("found: $line")
+            val parts = line.split("\\")
+            val mountLocation = "//builder@${parts[2]}/${parts[3]}"
+            locationSet.add(mountLocation)
             val mountFolder = "${System.getProperty("user.home")}/devbuilds_release"
             strBuffer.append(line.replace("\\", "/")
                 .replace("//devbuilds/release", mountFolder)
                 .replace("//devbuilds/maestro", mountFolder) + "\n"
             )
         }
-        fileList?.apply {
-            writeText(strBuffer.toString())
-        }
+
+//        fileList?.apply {
+//            writeText(strBuffer.toString())
+//        }
         return "builder@devbuilds/release"
     }
 

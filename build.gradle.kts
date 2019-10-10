@@ -15,13 +15,11 @@ tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
 }
 
-//project.extensions.get("notarization")  {
     notarization {
-        fileList = File("src/test/resources/fakeFileList")
+        fileList = File("buildSrc/src/test/resources/fakeFileList.txt")
         workingDir = "/Users/tschumacher/installers-2019.3"
         appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
         appleId = "tschumacher@tableau.com"
         workspaceRootDir = "~/p4"
         certificateId = "Developer ID Application: Tableau Software, Inc. (QJ4XPRK37C)"
     }
-//}

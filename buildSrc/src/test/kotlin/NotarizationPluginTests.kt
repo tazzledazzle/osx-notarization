@@ -22,18 +22,6 @@ class NotarizationPluginTests : Spek({
             .withProjectDir(temporaryDir)
             .withName("notarization-test-project")
             .build()
-        it("applies to projects") {
-            extension.appSpecificPassword = "somepassword"
-            extension.appleId = "someName@tableau.com"
-            extension.fileList = File("${System.getProperty("user.dir")}/src/test/resources/fakeFileList.txt")
-            extension.certificateId = "some certificate that I swear is real"
-            extension.workingDir = "${System.getProperty("user.home")}/releases_notarized"
-            extension.workspaceRootDir = "${System.getProperty("user.home")}/p4"
-
-            plugin.project = project
-            plugin.workingDir = File(extension.workingDir)
-//            plugin.apply(project)
-        }
 
         it("parses uuid from output") {
             val expectedUUID = "6e61ea74-7e69-4d47-906a-32dc93968342"
@@ -47,6 +35,12 @@ class NotarizationPluginTests : Spek({
 
             val uuid = plugin.parseUUIDFromResultOutput(sample)
             assertEquals(expectedUUID, uuid)
+        }
+
+        it("parses a file list") {
+            val fakeFileList = File("${System.getProperty("user.dir")}/src/test/resources/fakeFileList.txt")
+            val shareLocation = plugin.parseShareLocation(fakeFileList)
+            assertEquals("builder@devbuilds/release", shareLocation)
         }
     }
 })
