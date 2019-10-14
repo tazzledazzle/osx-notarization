@@ -16,10 +16,10 @@ tasks.withType<KotlinCompile> {
 }
 
     notarization {
-        fileList = File("buildSrc/src/test/resources/fakeFileList.txt")
-        workingDir = "/Users/tschumacher/installers-2019.3"
+        fileList = File("/Users/builder/releases_notarized/10142019-2019.4.0-rc0.txt")
+        workingDir = "/Users/builder/releases_notarized"
         appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
         appleId = "tschumacher@tableau.com"
-        workspaceRootDir = "~/p4"
+        workspaceRootDir = "/Users/builder/p4"
         certificateId = "Developer ID Application: Tableau Software, Inc. (QJ4XPRK37C)"
     }
