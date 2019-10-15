@@ -11,17 +11,18 @@ class NotarizationPlugin : Plugin<Project> {
     private val CODE_NOT_SIGNED_TEXT: String = "code object is not signed at all"
     private val ARTIFACT_ALREADY_UPLOADED: String = "The software asset has already been uploaded. The upload ID is"
     lateinit var project: Project
-    lateinit var workingDir: File
     private val bundleUUIDList = ArrayList<Pair<String, String>>()
     private val bundleUUIDListFile = File("out/bundleUUIDList.txt")
     val mountDir = File("/Users/builder/devbuilds_release")
     val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
     lateinit var localReleaseDir: File
-
+    lateinit var outDir: File
 
     override fun apply(target: Project) {
         // configure plugin
         project = target
+        outDir = File(project.projectDir, "out")
+        outDir.mkdirs()
         project.extensions.create("notarization", NotarizationPluginExtension::class.java)
         val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
 
@@ -35,6 +36,7 @@ class NotarizationPlugin : Plugin<Project> {
         val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
         //todo: make this configurable, maybe parse the file name as the suffix
 
+
         project.tasks.register("mountSmbfs") {task ->
             task.group = "notarization"
 
@@ -42,7 +44,7 @@ class NotarizationPlugin : Plugin<Project> {
                 if (!mountDir.exists()) {
                     mountDir.mkdirs()
                 }
-                if (mountDir.listFiles().size == 0){
+                if (mountDir.listFiles()?.size == 0){
                     // mount dir
                     project.exec { execSpec ->
                         execSpec.workingDir = File("${System.getProperty("user.home")}/")
@@ -53,6 +55,7 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
+        val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
         project.tasks.register("createLocalReleaseDirectory"){ task ->
             task.group = "notarization"
             task.description = "create release local dir if doesn't exist"
@@ -63,7 +66,6 @@ class NotarizationPlugin : Plugin<Project> {
                     exitProcess(1)
                 }
 
-                val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
                 localReleaseDir = File(releasesNotarizedDir, localDirName)
             }
 
@@ -81,23 +83,29 @@ class NotarizationPlugin : Plugin<Project> {
         project.tasks.register("copyBinariesFromShare") { copyTask ->
             // validate extension
             if (notarizationExtension.fileList == null) {
-                println("You must specify a 'fileList' value in the notarization exension!")
+                project.logger.error("You must specify a 'fileList' value in the notarization exension!")
                 exitProcess(1)
             }
 
-            localReleaseDir = File(releasesNotarizedDir, notarizationExtension.fileList!!.name.replace(".txt", ""))
+            localReleaseDir = File(releasesNotarizedDir, localDirName)
 
             copyTask.group = "notarization"
-            copyTask.onlyIf { localReleaseDir.listFiles().size == 0 }
+            copyTask.onlyIf { localReleaseDir.listFiles()!!.isEmpty() }
+
             copyTask.doFirst {
                 if (notarizationExtension.binariesList.size == 0) {
                     println("binaries List is empty")
                     addBinariesToBinariesList(notarizationExtension)
                 }
             }
-            copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
+
+            copyTask.dependsOn(
+                project.tasks.named("createLocalReleaseDirectory"),
+                project.tasks.named("mountSmbfs")
+            )
+
             copyTask.doLast {
-                println("copying ${notarizationExtension.binariesList} into '$localReleaseDir'")
+                project.logger.info("copying ${notarizationExtension.binariesList} into '$localReleaseDir'")
                 notarizationExtension.workingDir = localReleaseDir.absolutePath
                 project.copy {
                     it.from(notarizationExtension.binariesList)
@@ -152,9 +160,7 @@ class NotarizationPlugin : Plugin<Project> {
             }
 
             task.doLast {
-                notarizationExtension
-                    .binariesList
-                    .forEach { file ->
+                notarizationExtension.binariesList.forEach { file ->
                         try {
                             println("Checking signing status of $file")
                             val signedOutput = ByteArrayOutputStream()
@@ -428,9 +434,9 @@ class NotarizationPlugin : Plugin<Project> {
             )
         }
 
-//        fileList?.apply {
-//            writeText(strBuffer.toString())
-//        }
+        File(outDir, "tempFileList.txt").apply {
+            writeText(strBuffer.toString())
+        }
         return "builder@devbuilds/release"
     }
 
