@@ -6,7 +6,6 @@ plugins {
     id("java-gradle-plugin")
 }
 
-
 val kotlin_version = "1.3.41"
 val spek_version = "2.0.8"
 
@@ -27,6 +26,7 @@ dependencies {
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
 }
+
 tasks.withType<Test> {
     useJUnitPlatform {
         includeEngines("spek2")

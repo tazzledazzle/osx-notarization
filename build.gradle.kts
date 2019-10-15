@@ -15,11 +15,15 @@ tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
 }
 
-    notarization {
-        fileList = File("/Users/builder/releases_notarized/2019-10-14-jdk-notarization.txt")
-        workingDir = "/Users/builder/releases_notarized"
-        appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
-        appleId = "tschumacher@tableau.com"
-        workspaceRootDir = "/Users/builder/p4"
-        certificateId = "Developer ID Application: Tableau Software, Inc. (QJ4XPRK37C)"
-    }
+notarization {
+    // list of paths to binaries
+    fileList = File("/Users/builder/releases_notarized/2019-10-14-jdk-notarization.txt")
+    // location of bits to be notarized
+    workingDir = "/Users/builder/releases_notarized"
+
+    // todo: read this sensitive material from properties file
+    appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
+    appleId = "tschumacher@tableau.com"
+    workspaceRootDir = "/Users/builder/p4"
+    certificateId = "Developer ID Application: Tableau Software, Inc. (QJ4XPRK37C)"
+}
