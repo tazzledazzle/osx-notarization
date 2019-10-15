@@ -261,6 +261,7 @@ class NotarizationPlugin : Plugin<Project> {
 //            "mountSmbfs",
 //            "createLocalReleaseDirectory",
 //            "copyBinariesFromShare",
+            "mountAndCreateLocalDir",
             "zipApps",
             "checkAndSign",
             "postToNotarizationService",
