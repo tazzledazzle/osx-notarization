@@ -16,7 +16,7 @@ tasks.withType<KotlinCompile> {
 }
 
     notarization {
-        fileList = File("/Users/builder/releases_notarized/2019-10-14-jdk-notarization.txt")
+        fileList = File("/Users/builder/releases_notarized/2019-10-15-maestro-2019-4.txt")
         workingDir = "/Users/builder/releases_notarized"
         appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
         appleId = "tschumacher@tableau.com"

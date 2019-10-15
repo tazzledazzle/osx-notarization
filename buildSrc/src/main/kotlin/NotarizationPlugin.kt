@@ -90,13 +90,15 @@ class NotarizationPlugin : Plugin<Project> {
 
             copyTask.group = "notarization"
             copyTask.onlyIf { localReleaseDir.listFiles().size == 0 }
+            copyTask.mustRunAfter(project.tasks.named("createLocalReleaseDirectory"))
+
             copyTask.doFirst {
                 if (notarizationExtension.binariesList.size == 0) {
                     println("binaries List is empty")
                     addBinariesToBinariesList(notarizationExtension)
                 }
             }
-            copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
+            // copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
             copyTask.doLast {
                 println("copying ${notarizationExtension.binariesList} into '$localReleaseDir'")
                 notarizationExtension.workingDir = localReleaseDir.absolutePath
@@ -143,7 +145,7 @@ class NotarizationPlugin : Plugin<Project> {
         // only binaries allowed [.pkg,.zip,.dmg]
         project.tasks.register("zipApps"){ task ->
             task.group = "notarization"
-            task.mustRunAfter(project.tasks.named("mountAndCreateLocalDir"))
+            task.mustRunAfter(project.tasks.named("copyBinariesFromShare"))
 
             task.doFirst {
                 if (notarizationExtension.binariesList.size == 0) {
@@ -258,8 +260,8 @@ class NotarizationPlugin : Plugin<Project> {
     private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
         val taskNames = listOf(
 //            "mountSmbfs",
-//            "createLocalReleaseDirectory",
-//            "copyBinariesFromShare",
+           "createLocalReleaseDirectory",
+           "copyBinariesFromShare",
             "zipApps",
             "checkAndSign",
             "postToNotarizationService",
@@ -292,6 +294,7 @@ class NotarizationPlugin : Plugin<Project> {
                 // polling
                 bundleUUIDList.forEach { pair ->
                     val job = GlobalScope.launch {
+                        delay(100L)
                         val bundleId = pair.first
                         val uuid = pair.second
                         println("Bundle Id: '$bundleId', UUID: '$uuid'")
@@ -321,7 +324,7 @@ class NotarizationPlugin : Plugin<Project> {
 
                 while(failedNotarizationList.size > 0) {
                     GlobalScope.launch {
-                        delay(60000L) // wait to start the process again
+                        delay(6000L) // wait to start the process again
                         val remainderList = failedNotarizationList
                         remainderList.forEach { notarizationInfo ->
                             val notarizationStdOut = executeQueryNotarizationService(notarizationInfo.requestUUID, notarizationInfo.notarizationExt)
