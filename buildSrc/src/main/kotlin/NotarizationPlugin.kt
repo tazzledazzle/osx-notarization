@@ -14,7 +14,7 @@ class NotarizationPlugin : Plugin<Project> {
     lateinit var workingDir: File
     private val bundleUUIDList = ArrayList<Pair<String, String>>()
     private val bundleUUIDListFile = File("out/bundleUUIDList.txt")
-    val mountDir = File("/Users/tschumacher/devbuilds_release")
+    val mountDir = File("/Users/builder/devbuilds_release")
     val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
     lateinit var localReleaseDir: File
 
@@ -31,14 +31,6 @@ class NotarizationPlugin : Plugin<Project> {
         createNotarizationMainTasks(notarizationExtension)
         createDownloadBinariesTasks(notarizationExtension)
         createStapleAndPublishTasks(notarizationExtension)
-
-        workingDir = File("/Users/builder/releases_notarized/2019-10-14-notarized-batch")
-        // workingDir = File(notarizationExt.workingDir!!)
-        // workspaceRootDir = File(notarizationExt.workspaceRootDir!!)
-        // if (workingDir == null) {
-        //     println("Working dir not set!")
-        //     System.exit(1)
-        // }
     }
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
@@ -88,6 +80,14 @@ class NotarizationPlugin : Plugin<Project> {
         }
         // copy to release local dir
         project.tasks.register("copyBinariesFromShare") { copyTask ->
+            // validate extension
+            if (notarizationExtension.fileList == null) {
+                println("You must specify a 'fileList' value in the notarization exension!")
+                exitProcess(1)
+            }
+
+            localReleaseDir = File(releasesNotarizedDir, notarizationExtension.fileList!!.name.replace(".txt", ""))
+
             copyTask.group = "notarization"
             copyTask.onlyIf { localReleaseDir.listFiles().size == 0 }
             copyTask.doFirst {
@@ -119,7 +119,7 @@ class NotarizationPlugin : Plugin<Project> {
     private fun createNotarizationMainTasks(notarizationExtension: NotarizationPluginExtension) {
         project.tasks.register("writeBundleListToFile") { task ->
             task.onlyIf { (bundleUUIDList.size != 0) && (!bundleUUIDList.isEmpty()) }
-            task.mustRunAfter(project.tasks.named("mountAndCreateLocalDir"))
+
             task.doLast {
                 val bundleUUIDFile = bundleUUIDListFile
                 if (!bundleUUIDFile.parentFile.exists()) {
@@ -270,6 +270,16 @@ class NotarizationPlugin : Plugin<Project> {
             task.group = "notarization"
             task.mustRunAfter(project.tasks.named("postToNotarizationService"))
 
+            task.doFirst {
+                // validate extension
+                if (notarizationExtension.fileList == null) {
+                    println("You must specify a 'fileList' value in the notarization exension!")
+                    exitProcess(1)
+                }
+
+                localReleaseDir = File(releasesNotarizedDir, notarizationExtension.fileList!!.name.replace(".txt", ""))
+            }
+
             task.doLast {
                 val bundleResponseUrlList = ArrayList<Pair<String, String>>()
                 // todo: coroutine this so we don't block
@@ -334,11 +344,11 @@ class NotarizationPlugin : Plugin<Project> {
                 // writes contents out to file
                 bundleResponseUrlList.forEach { pair ->
                     val jsonFileName = "${pair.first}.notarization.json"
-                    val ticketFile = File(workingDir, jsonFileName)
-                   ticketFile.apply {
+                    val ticketFile = File(localReleaseDir, jsonFileName)
+                    println("Writing '$ticketFile'...")
+                    ticketFile.apply {
                        writeText(pair.second)
                    }
-                    println("Writing '$ticketFile'...")
                 }
             }
         }
@@ -346,7 +356,7 @@ class NotarizationPlugin : Plugin<Project> {
         project.tasks.register("stapleRecursivelyAndValidate") {task ->
             task.group = "notarization"
             task.doLast {
-                workingDir.walkTopDown().forEach { file ->
+                localReleaseDir.walkTopDown().forEach { file ->
                     //todo: add other cases that need notarization
                     println("$file")
 
@@ -504,7 +514,7 @@ class NotarizationPlugin : Plugin<Project> {
                 }
                 else -> {
                     // send extra logs to debug for now
-                    project.logger.debug(line)
+//                    project.logger.debug(line)
                 }
             }
 
