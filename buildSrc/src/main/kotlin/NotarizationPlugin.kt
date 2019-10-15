@@ -16,12 +16,11 @@ class NotarizationPlugin : Plugin<Project> {
     val mountDir = File("/Users/builder/devbuilds_release")
     val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
     lateinit var localReleaseDir: File
-    lateinit var outDir: File
+    var outDir: File = File( "out")
 
     override fun apply(target: Project) {
         // configure plugin
         project = target
-        outDir = File(project.projectDir, "out")
         outDir.mkdirs()
         project.extensions.create("notarization", NotarizationPluginExtension::class.java)
         val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
