@@ -34,8 +34,7 @@ class NotarizationPlugin : Plugin<Project> {
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
         val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
-        //todo: make this configurable, maybe parse the file name as the suffix
-
+        val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
 
         project.tasks.register("mountSmbfs") {task ->
             task.group = "notarization"
@@ -55,7 +54,6 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
         project.tasks.register("createLocalReleaseDirectory"){ task ->
             task.group = "notarization"
             task.description = "create release local dir if doesn't exist"
@@ -79,14 +77,12 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        // copy to release local dir
         project.tasks.register("copyBinariesFromShare") { copyTask ->
             // validate extension
             if (notarizationExtension.fileList == null) {
                 project.logger.error("You must specify a 'fileList' value in the notarization exension!")
                 exitProcess(1)
             }
-
             localReleaseDir = File(releasesNotarizedDir, localDirName)
 
             copyTask.group = "notarization"
