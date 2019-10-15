@@ -25,8 +25,6 @@ class NotarizationPlugin : Plugin<Project> {
         project.extensions.create("notarization", NotarizationPluginExtension::class.java)
         val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
 
-        println(notarizationExtension)
-
         // add tasks
         createNotarizationMainTasks(notarizationExtension)
         createDownloadBinariesTasks(notarizationExtension)
@@ -36,7 +34,6 @@ class NotarizationPlugin : Plugin<Project> {
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
         val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
         //todo: make this configurable, maybe parse the file name as the suffix
-        // val localReleaseDir = File(releasesNotarizedDir, "${LocalDate.now()}-notarized-batch")
 
         project.tasks.register("mountSmbfs") {task ->
             task.group = "notarization"
@@ -58,18 +55,19 @@ class NotarizationPlugin : Plugin<Project> {
 
         project.tasks.register("createLocalReleaseDirectory"){ task ->
             task.group = "notarization"
+            task.description = "create release local dir if doesn't exist"
+
             task.doFirst {
-                // validate extension
                 if (notarizationExtension.fileList == null) {
                     println("You must specify a 'fileList' value in the notarization exension!")
                     exitProcess(1)
                 }
 
-                localReleaseDir = File(releasesNotarizedDir, notarizationExtension.fileList!!.name.replace(".txt", ""))
+                val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
+                localReleaseDir = File(releasesNotarizedDir, localDirName)
             }
 
             task.doLast {
-                // create release local dir
                 project.exec { execSpec ->
                     execSpec.workingDir = releasesNotarizedDir
                     execSpec.executable = "mkdir"
@@ -78,6 +76,7 @@ class NotarizationPlugin : Plugin<Project> {
                 }
             }
         }
+
         // copy to release local dir
         project.tasks.register("copyBinariesFromShare") { copyTask ->
             // validate extension
@@ -117,30 +116,7 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun createNotarizationMainTasks(notarizationExtension: NotarizationPluginExtension) {
-        project.tasks.register("writeBundleListToFile") { task ->
-            task.onlyIf { (bundleUUIDList.size != 0) && (!bundleUUIDList.isEmpty()) }
 
-            task.doLast {
-                val bundleUUIDFile = bundleUUIDListFile
-                if (!bundleUUIDFile.parentFile.exists()) {
-                    bundleUUIDFile.parentFile.mkdirs()
-                }
-
-                if (bundleUUIDFile.exists()) {
-                    bundleUUIDFile.apply {
-                        writeText("")
-                    }
-                }
-                bundleUUIDList.forEach { pair ->
-                    bundleUUIDFile.apply {
-                        appendText("${pair.first}\n" )
-                        appendText("${pair.second}\n")
-                    }
-                }
-            }
-        }
-
-        // only binaries allowed [.pkg,.zip,.dmg]
         project.tasks.register("zipApps"){ task ->
             task.group = "notarization"
             task.mustRunAfter(project.tasks.named("mountAndCreateLocalDir"))
@@ -215,7 +191,30 @@ class NotarizationPlugin : Plugin<Project> {
                     }
             }
         }
-        // todo: ensure signing control flow
+
+        project.tasks.register("writeBundleListToFile") { task ->
+            task.onlyIf { (bundleUUIDList.size != 0) && (!bundleUUIDList.isEmpty()) }
+
+            task.doLast {
+                val bundleUUIDFile = bundleUUIDListFile
+                if (!bundleUUIDFile.parentFile.exists()) {
+                    bundleUUIDFile.parentFile.mkdirs()
+                }
+
+                if (bundleUUIDFile.exists()) {
+                    bundleUUIDFile.apply {
+                        writeText("")
+                    }
+                }
+                bundleUUIDList.forEach { pair ->
+                    bundleUUIDFile.apply {
+                        appendText("${pair.first}\n" )
+                        appendText("${pair.second}\n")
+                    }
+                }
+            }
+        }
+
         project.tasks.register("postToNotarizationService") { task ->
             task.group = "notarization"
             task.mustRunAfter(project.tasks.named("checkAndSign"))
@@ -538,10 +537,9 @@ class NotarizationPlugin : Plugin<Project> {
     private fun addBinariesToBinariesList(notarizationExtension: NotarizationPluginExtension) {
         "${System.getProperty("user.home")}/devbuilds_release"
         println( "Files List: ${notarizationExtension.fileList}")
+        // only binaries allowed [.pkg,.zip,.dmg]
         //todo: need to ensure that no backslashes '\' are present
         notarizationExtension.binariesList = notarizationExtension.fileList!!.readLines().groupBy { File(it) }.keys.toList()
-//        notarizationExtension.binariesList = notarizationExtension.binariesList
-//            .groupBy { File("${localReleaseDir.absolutePath}/${it.name}")}.keys.toList() as ArrayList<File>
     }
 }
 
@@ -556,13 +554,6 @@ open class NotarizationPluginExtension {
     var workspaceRootDir: String? = null
     var certificateId: String? = null
 }
-
-//"   RequestUUID: 6c56f7ee-67b3-47b1-9dff-2bdf1987c6e2\n" +
-//"          Date: 2019-10-07 19:11:58 +0000\n" +
-//"        Status: success\n" +
-//"    LogFileURL: $expectedUrl\n" +
-//"   Status Code: 0\n" +
-//"Status Message: Package Approved"
 
 data class NotarizationInfo(val bundleId: String = "", val requestUUID: String = "",
                             val statusMsg: String = "", val status: String = "", val logFileUrl: String = "",
