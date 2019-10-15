@@ -15,6 +15,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation(gradleApi())
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.2")
+
     testImplementation("org.spekframework.spek2:spek-dsl-jvm:$spek_version")
     testImplementation(kotlin("test"))
     testRuntimeOnly("org.spekframework.spek2:spek-runner-junit5:$spek_version")
@@ -31,6 +32,7 @@ tasks.withType<Test> {
     useJUnitPlatform {
         includeEngines("spek2")
     }
+
     testLogging {
         events("failed")
         events("skipped")
