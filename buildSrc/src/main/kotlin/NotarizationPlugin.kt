@@ -86,8 +86,6 @@ class NotarizationPlugin : Plugin<Project> {
 
             copyTask.group = "notarization"
             copyTask.onlyIf { localReleaseDir.listFiles()!!.isEmpty() }
-
-            copyTask.onlyIf { localReleaseDir.listFiles().size == 0 }
             copyTask.mustRunAfter(project.tasks.named("createLocalReleaseDirectory"))
 
             copyTask.doFirst {
