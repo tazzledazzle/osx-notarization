@@ -433,7 +433,7 @@ class NotarizationPlugin : Plugin<Project> {
                 .replace("//devbuilds/maestro", mountFolder) + "\n"
             )
         }
-
+        outDir.mkdirs()
         File(outDir, "tempFileList.txt").apply {
             writeText(strBuffer.toString())
         }
