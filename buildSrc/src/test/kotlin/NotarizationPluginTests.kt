@@ -1,16 +1,12 @@
 package com.tableau.gradle
 
 import com.tableau.gradle.notarization.NotarizationPlugin
-import com.tableau.gradle.notarization.NotarizationPluginExtension
-import org.gradle.internal.impldep.com.google.common.io.Files
-import org.gradle.testfixtures.ProjectBuilder
 import org.spekframework.spek2.Spek
 import org.spekframework.spek2.style.specification.describe
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class NotarizationPluginTests : Spek({
     describe("Notarization Plugin") {
@@ -47,8 +43,8 @@ class NotarizationPluginTests : Spek({
                     "   Status Code: 0\n" +
                     "Status Message: Package Approved"
             val actualOutcome = plugin.parseNotarizationInfo(sample)
-            assertEquals(true, actualOutcome.first)
-            assertEquals(expectedUrl, actualOutcome.second)
+            assertEquals(true, actualOutcome.statusCode)
+            assertEquals(expectedUrl, actualOutcome.logFileUrl)
         }
     }
 })
