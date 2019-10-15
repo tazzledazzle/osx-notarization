@@ -47,9 +47,10 @@ class NotarizationPlugin : Plugin<Project> {
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
         val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
-//        addBinariesToBinariesList(notarizationExtension)
         val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
-        val localReleaseDir = File(releasesNotarizedDir, "${LocalDate.now()}-notarized-batch")
+        //todo: make this configurable
+        // val localReleaseDir = File(releasesNotarizedDir, "${LocalDate.now()}-notarized-batch")
+        val localReleaseDir = File(releasesNotarizedDir, "2019-10-14-jdk-notarization")
 
 
         project.tasks.register("mountSmbfs") {task ->
@@ -93,7 +94,7 @@ class NotarizationPlugin : Plugin<Project> {
                     addBinariesToBinariesList(notarizationExtension)
                 }
             }
-            copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
+            // copyTask.dependsOn(project.tasks.named("createLocalReleaseDirectory"), project.tasks.named("mountSmbfs"))
             copyTask.doLast {
                 println("copying ${notarizationExtension.binariesList} into '$localReleaseDir'")
                 notarizationExtension.workingDir = localReleaseDir.absolutePath
@@ -102,7 +103,7 @@ class NotarizationPlugin : Plugin<Project> {
                     it.into(localReleaseDir.absolutePath)
                 }
                 notarizationExtension.binariesList = notarizationExtension.binariesList
-                    .groupBy { File("${localReleaseDir.absolutePath}/${it.name}")}.keys.toList() as ArrayList<File>
+                    .groupBy { File("${localReleaseDir.absolutePath}/${it.name}")}.keys.toList() as List<File>
             }
         }
 
@@ -164,7 +165,6 @@ class NotarizationPlugin : Plugin<Project> {
 
         project.tasks.register("checkAndSign") { task ->
             task.group = "notarization"
-            task.dependsOn(project.tasks.named("zipApps"))
 
             task.doFirst {
                 if (notarizationExtension.binariesList.size == 0) {
@@ -212,7 +212,6 @@ class NotarizationPlugin : Plugin<Project> {
         // todo: ensure signing control flow
         project.tasks.register("postToNoarizationService") { task ->
             task.group = "notarization"
-            task.dependsOn(project.tasks.named("checkAndSign"))
 
             task.doFirst {
                 if (notarizationExtension.binariesList.size == 0) {
@@ -250,9 +249,16 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
+         val taskNames = listOf("mountAndCreateLocalDir",
+                            "writeBundleListToFile",
+                            "zipApps",
+                            "checkAndSign",
+                            "postToNoarizationService",
+                            "pollAndWriteJsonTicket",
+                            "stapleRecursivelyAndValidate")
+
         project.tasks.register("pollAndWriteJsonTicket") {task ->
             task.group = "notarization"
-//            task.dependsOn(project.tasks.named("postToNoarizationService"))
             task.doLast {
                 val bundleResponseUrlList = ArrayList<Pair<String, String>>()
                 // todo: coroutine this so we don't block
@@ -325,8 +331,6 @@ class NotarizationPlugin : Plugin<Project> {
 
         project.tasks.register("stapleRecursivelyAndValidate") {task ->
             task.group = "notarization"
-            // task.dependsOn(project.tasks.named("pollAndWriteJsonTicket"))
-
             task.doLast {
                 workingDir.walkTopDown().forEach { file ->
                     //todo: add other cases that need notarization
@@ -351,15 +355,21 @@ class NotarizationPlugin : Plugin<Project> {
         // lifecycle task
         project.tasks.register("notarize") {task ->
             task.group = "notarization"
-            task.dependsOn(project.tasks.named("stapleRecursivelyAndValidate"))
+            task.dependsOn(taskNames)
         }
+
+            // for (i in 1 until taskNames.size) {
+            //     project.tasks.named(taskNames[i]) {
+            //         it.mustRunAfter(project.tasks.named(taskNames[i - 1]))
+            //     }
+            // }
+
     }
 
     private fun addResponseToUrlList(
         notarizationStatus: Pair<Boolean, String?>,
-        bundleResponseUrlList: ArrayList<Pair<String, String>>,
-        bundleId: String
-    ) {
+        bundleResponseUrlList: List<Pair<String, String>>,
+        bundleId: String) {
         val baos = ByteArrayOutputStream()
         project.exec { execSpec ->
             execSpec.standardOutput = baos
@@ -367,10 +377,10 @@ class NotarizationPlugin : Plugin<Project> {
         }
 
         val jsonResponse = baos.toString()
-        bundleResponseUrlList.add(Pair(bundleId, jsonResponse))
+        (bundleResponseUrlList as ArrayList<Pair<String, String>>).add(Pair(bundleId, jsonResponse))
     }
 
-    private fun populateListFromFile(bundleUUIDListFile: File): ArrayList<Pair<String, String>> {
+    private fun populateListFromFile(bundleUUIDListFile: File): List<Pair<String, String>> {
         val lines = bundleUUIDListFile.readLines()
         val pairsList = ArrayList<Pair<String, String>>()
         for(i in 0 until lines.size step 2) {
@@ -488,19 +498,21 @@ class NotarizationPlugin : Plugin<Project> {
 
         val mountFolder = "${System.getProperty("user.home")}/devbuilds_release"
         println( "Files List: ${notarizationExtension.fileList}")
-        notarizationExtension.binariesList.addAll(
-            parseBinariesFromFileList(
-                notarizationExtension.fileList!!.readLines().groupBy{
-                    it.replace("\\", "/")
-                        .replace("//devbuilds/release", mountFolder)
-                        .replace("//devbuilds/maestro", mountFolder)
-                }.keys.toList() as ArrayList<String>
-            )
-        )
+        val filenames = parseBinariesFromFileList(notarizationExtension.fileList!!.readLines())
+        println(filenames)
+        if (filenames.size > 1) {
+            notarizationExtension.binariesList.addAll(filenames)
+        }
+        else if (filenames.size == 1) {
+            notarizationExtension.binariesList.add(filenames)
+        }
+        else {
+            throw Exception("No files in ${notarizationExtension.fileList}")
+        }
     }
 
-fun parseBinariesFromFileList(pathStringList: ArrayList<String>): ArrayList<File> {
-        return pathStringList.groupBy { File(it) }.keys.toList() as ArrayList<File>
+fun parseBinariesFromFileList(pathStringList: List<String>): List<File> {
+        return pathStringList.groupBy { File(it) }.keys.toList()
     }
 }
 
@@ -509,7 +521,7 @@ fun String.toBundleId(): String = this.replace("_", "-").split("-").take(5).join
 open class NotarizationPluginExtension {
 
     var fileList: File? = null
-    var binariesList: ArrayList<File> = ArrayList()
+    var binariesList: List<File> = ArrayList()
     var workingDir: String? = null
     var appSpecificPassword: String? = null
     var appleId: String? = null
