@@ -480,6 +480,7 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun executeQueryNotarizationService(uuid: String?, notarizationExtension: NotarizationPluginExtension?): String {
+        println("Querying RequestUUID: '$uuid' NotarizationExtension: '$notarizationExtension'")
         val baos = ByteArrayOutputStream()
         val stderr = ByteArrayOutputStream()
         if (uuid != null && notarizationExtension != null) {
