@@ -482,18 +482,21 @@ class NotarizationPlugin : Plugin<Project> {
     private fun executeQueryNotarizationService(uuid: String?, notarizationExtension: NotarizationPluginExtension?): String {
         val baos = ByteArrayOutputStream()
         val stderr = ByteArrayOutputStream()
-        project.exec { execSpec ->
-            execSpec.standardOutput = baos
-            execSpec.errorOutput = stderr
-            execSpec.executable = "xcrun"
-            execSpec.isIgnoreExitValue = true
+        if (uuid != null && notarizationExtension != null) {
+            project.exec { execSpec ->
+                execSpec.standardOutput = baos
+                execSpec.errorOutput = stderr
+                execSpec.executable = "xcrun"
+                execSpec.isIgnoreExitValue = true
 
-            execSpec.args(
-                    "altool", "--notarization-info", uuid, "-u", notarizationExtension!!.appleId,
+                execSpec.args(
+                    "altool", "--notarization-info", uuid, "-u", notarizationExtension.appleId,
                     "-p", notarizationExtension.appSpecificPassword
-            )
+                )
+            }
+            return baos.toString() + "\n" + stderr.toString()
         }
-        return baos.toString() + "\n" + stderr.toString()
+        return "RequestUUID: '$uuid' NotarizationExtension: '$notarizationExtension'"
     }
 
     fun parseNotarizationInfo(
