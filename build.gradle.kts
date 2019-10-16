@@ -17,9 +17,10 @@ tasks.withType<KotlinCompile> {
 
 notarization {
     // list of paths to binaries
-    fileList = File("/Users/builder/releases_notarized/2019-10-14-jdk-notarization.txt")
+    fileList = File("/Users/builder/releases_notarized/2019-10-16-maestro-2019-4.19.1016.0911.txt")
     // location of bits to be notarized
     workingDir = "/Users/builder/releases_notarized"
+    mountLocation = "//builder@devbuilds/maestro"
 
     // todo: read this sensitive material from properties file
     appSpecificPassword = "eduk-hlnz-zxyg-qhsy"

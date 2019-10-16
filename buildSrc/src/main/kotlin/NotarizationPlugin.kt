@@ -5,6 +5,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.Exception
 import kotlin.system.exitProcess
 
 class NotarizationPlugin : Plugin<Project> {
@@ -32,7 +33,12 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
-        val fileShareLocation = parseShareLocation(notarizationExtension.fileList)
+        val fileShareLocation = notarizationExtension.mountLocation
+
+        if (!notarizationExtension.fileList?.exists()!!) {
+            throw Exception("File list seems to be empty or null")
+        }
+
         val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
 
         project.tasks.register("mountSmbfs") {task ->
@@ -47,7 +53,7 @@ class NotarizationPlugin : Plugin<Project> {
                     project.exec { execSpec ->
                         execSpec.workingDir = File("${System.getProperty("user.home")}/")
                         execSpec.executable = "mount"
-                        execSpec.args("-t", "smbfs", "//$fileShareLocation", mountDir)
+                        execSpec.args("-t", "smbfs", fileShareLocation, mountDir)
                     }
                 }
             }
@@ -557,6 +563,7 @@ open class NotarizationPluginExtension {
     var appleId: String? = null
     var workspaceRootDir: String? = null
     var certificateId: String? = null
+    var mountLocation: String = "//builder@devbuilds/release"
 }
 
 data class NotarizationInfo (
