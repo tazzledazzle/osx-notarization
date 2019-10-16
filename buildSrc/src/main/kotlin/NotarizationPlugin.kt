@@ -311,7 +311,7 @@ class NotarizationPlugin : Plugin<Project> {
 
                         // todo: ensure that statusCode is the correct condition here
                         //   check the pair until we receive true for first
-                        if (!notarizationInfo.statusCode && notarizationInfo.status != "success" && notarizationInfo.status != "invalid") {
+                        if (!notarizationInfo.statusCode!! && notarizationInfo.status != "success" && notarizationInfo.status != "invalid") {
                             failedNotarizationList.add(notarizationInfo)
                         }
                         else {
@@ -329,25 +329,32 @@ class NotarizationPlugin : Plugin<Project> {
                 jobList.clear()
 
                 while(failedNotarizationList.size > 0) {
-                    GlobalScope.launch {
-                        delay(6000L) // wait to start the process again
-                        val remainderList = failedNotarizationList
-                        remainderList.forEach { notarizationInfo ->
-                            val notarizationStdOut = executeQueryNotarizationService(notarizationInfo.requestUUID, notarizationInfo.notarizationExt)
-                            val notarizationStatus = parseNotarizationInfo(
-                                notarizationStdOut,
-                                notarizationExtension,
-                                notarizationInfo.bundleId
-                            )
+                    val remainderList = failedNotarizationList
+                    remainderList.forEach { remainder ->
+                            val job = GlobalScope.launch {
+                                delay(6000L) // wait to start the process again
+                                val notarizationStdOut =
+                                    executeQueryNotarizationService(remainder.requestUUID, remainder.notarizationExt)
+                                val notarizationInfo = parseNotarizationInfo(
+                                    notarizationStdOut,
+                                    notarizationExtension,
+                                    remainder.bundleId
+                                )
 
-                            //   check the pair until we receive true for first
-                            if (notarizationInfo.statusCode && notarizationInfo.status == "success") {
-                                // query and save the results of the notarization
-                                addResponseToUrlList(Pair(notarizationStatus.statusCode, notarizationStatus.logFileUrl),
-                                    bundleResponseUrlList, notarizationInfo.bundleId)
-                                failedNotarizationList.remove(notarizationInfo)
+                                //   check the pair until we receive true for first
+                                if (notarizationInfo.statusCode!! && notarizationInfo.status == "success") {
+                                    // query and save the results of the notarization
+                                    addResponseToUrlList(
+                                        Pair(notarizationInfo.statusCode, notarizationInfo.logFileUrl),
+                                        bundleResponseUrlList, notarizationInfo.bundleId
+                                    )
+                                    failedNotarizationList.remove(remainder)
+                                }
                             }
+                            jobList.add(job)
                         }
+                    for (job in jobList) {
+                        runBlocking { job.join() }
                     }
                 }
                 // writes contents out to file
@@ -394,9 +401,10 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun addResponseToUrlList(
-        notarizationStatus: Pair<Boolean, String?>,
+        notarizationStatus: Pair<Boolean?, String?>,
         bundleResponseUrlList: List<Pair<String, String>>,
-        bundleId: String) {
+        bundleId: String?
+    ) {
         val baos = ByteArrayOutputStream()
         project.exec { execSpec ->
             execSpec.standardOutput = baos
@@ -405,7 +413,7 @@ class NotarizationPlugin : Plugin<Project> {
         }
 
         val jsonResponse = baos.toString()
-        (bundleResponseUrlList as ArrayList<Pair<String, String>>).add(Pair(bundleId, jsonResponse))
+        (bundleResponseUrlList as ArrayList<Pair<String, String>>).add(Pair(bundleId!!, jsonResponse))
     }
 
     private fun populateListFromFile(bundleUUIDListFile: File): List<Pair<String, String>> {
@@ -471,7 +479,7 @@ class NotarizationPlugin : Plugin<Project> {
         return uuid ?: ""
     }
 
-    private fun executeQueryNotarizationService(uuid: String, notarizationExtension: NotarizationPluginExtension): String {
+    private fun executeQueryNotarizationService(uuid: String?, notarizationExtension: NotarizationPluginExtension?): String {
         val baos = ByteArrayOutputStream()
         val stderr = ByteArrayOutputStream()
         project.exec { execSpec ->
@@ -481,7 +489,7 @@ class NotarizationPlugin : Plugin<Project> {
             execSpec.isIgnoreExitValue = true
 
             execSpec.args(
-                    "altool", "--notarization-info", uuid, "-u", notarizationExtension.appleId,
+                    "altool", "--notarization-info", uuid, "-u", notarizationExtension!!.appleId,
                     "-p", notarizationExtension.appSpecificPassword
             )
         }
@@ -491,7 +499,7 @@ class NotarizationPlugin : Plugin<Project> {
     fun parseNotarizationInfo(
         notarizationInfo: String,
         notarizationExtension: NotarizationPluginExtension = NotarizationPluginExtension(),
-        bundleId: String = ""
+        bundleId: String? = ""
     ): NotarizationInfo {
         var status: String? = null
         var requestUUID: String? = null
@@ -531,10 +539,10 @@ class NotarizationPlugin : Plugin<Project> {
         }
         return NotarizationInfo(bundleId = bundleId,
             statusCode = statusCode,
-            status = status!!,
-            requestUUID = requestUUID!!,
-            logFileUrl = logFileUrl!!,
-            statusMsg = statusMsg!!,
+            status = status,
+            requestUUID = requestUUID,
+            logFileUrl = logFileUrl,
+            statusMsg = statusMsg,
             notarizationExt = notarizationExtension
             )
     }
