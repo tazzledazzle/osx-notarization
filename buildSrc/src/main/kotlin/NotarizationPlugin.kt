@@ -5,6 +5,7 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.lang.Exception
 import kotlin.system.exitProcess
 
@@ -25,21 +26,20 @@ class NotarizationPlugin : Plugin<Project> {
         outDir.mkdirs()
         project.extensions.create("notarization", NotarizationPluginExtension::class.java)
         val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
-
-        // add tasks
-        createNotarizationMainTasks(notarizationExtension)
-        createDownloadBinariesTasks(notarizationExtension)
-        createStapleAndPublishTasks(notarizationExtension)
+        project.afterEvaluate {
+            // add tasks
+            createNotarizationMainTasks(notarizationExtension)
+            createDownloadBinariesTasks(notarizationExtension)
+            createStapleAndPublishTasks(notarizationExtension)
+        }
     }
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
-        val fileShareLocation = notarizationExtension.mountLocation
-
-        if (!notarizationExtension.fileList?.exists()!!) {
-            throw Exception("File list seems to be empty or null")
+        if (notarizationExtension.binaryListFile is Nothing) {
+            throw FileNotFoundException("You must specify a `binaryListFile` in the notarization extension!")
         }
-
-        val localDirName = notarizationExtension.fileList!!.name.replace(".txt", "")
+        val fileShareLocation = notarizationExtension.mountLocation
+        val localDirName = notarizationExtension.binaryListFile.name.replace(".txt", "")
 
         project.tasks.register("mountSmbfs") {task ->
             task.group = "notarization"
@@ -64,7 +64,7 @@ class NotarizationPlugin : Plugin<Project> {
             task.description = "create release local dir if doesn't exist"
 
             task.doFirst {
-                if (notarizationExtension.fileList == null) {
+                if (notarizationExtension.binaryListFile == null) {
                     println("You must specify a 'fileList' value in the notarization exension!")
                     exitProcess(1)
                 }
@@ -84,7 +84,7 @@ class NotarizationPlugin : Plugin<Project> {
 
         project.tasks.register("copyBinariesFromShare") { copyTask ->
             // validate extension
-            if (notarizationExtension.fileList == null) {
+            if (notarizationExtension.binaryListFile == null) {
                 project.logger.error("You must specify a 'fileList' value in the notarization exension!")
                 exitProcess(1)
             }
@@ -280,12 +280,12 @@ class NotarizationPlugin : Plugin<Project> {
 
             task.doFirst {
                 // validate extension
-                if (notarizationExtension.fileList == null) {
+                if (notarizationExtension.binaryListFile == null) {
                     println("You must specify a 'fileList' value in the notarization exension!")
                     exitProcess(1)
                 }
 
-                localReleaseDir = File(releasesNotarizedDir, notarizationExtension.fileList!!.name.replace(".txt", ""))
+                localReleaseDir = File(releasesNotarizedDir, notarizationExtension.binaryListFile.name.replace(".txt", ""))
             }
 
             task.doLast {
@@ -546,17 +546,17 @@ class NotarizationPlugin : Plugin<Project> {
     // todo: write tests
     private fun addBinariesToBinariesList(notarizationExtension: NotarizationPluginExtension) {
         "${System.getProperty("user.home")}/devbuilds_release"
-        println( "Files List: ${notarizationExtension.fileList}")
+        println( "Files List: ${notarizationExtension.binaryListFile}")
         // only binaries allowed [.pkg,.zip,.dmg]
         //todo: need to ensure that no backslashes '\' are present
-        notarizationExtension.binariesList = notarizationExtension.fileList!!.readLines().groupBy { File(it) }.keys.toList()
+        notarizationExtension.binariesList = notarizationExtension.binaryListFile.readLines().groupBy { File(it) }.keys.toList()
     }
 }
 
 fun String.toBundleId(): String = this.replace("_", "-").split("-").take(5).joinToString(".")
 
 open class NotarizationPluginExtension {
-    var fileList: File? = null
+    lateinit var binaryListFile: File
     var binariesList: List<File> = ArrayList()
     var workingDir: String? = null
     var appSpecificPassword: String? = null
