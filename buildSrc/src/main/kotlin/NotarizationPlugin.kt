@@ -35,7 +35,7 @@ class NotarizationPlugin : Plugin<Project> {
     }
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
-        if (notarizationExtension.binaryListFile is Nothing) {
+        if (notarizationExtension.binaryListFile is Nothing || !notarizationExtension.binaryListFile.exists()) {
             throw FileNotFoundException("You must specify a `binaryListFile` in the notarization extension!")
         }
         val fileShareLocation = notarizationExtension.mountLocation
