@@ -2,12 +2,17 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.3.41"
+    kotlin("jvm") version "2.1.10"
     id("java-gradle-plugin")
 }
 
-val kotlin_version = "1.3.41"
+val kotlin_version = "2.1.10"
 val spek_version = "2.0.8"
+
+repositories {
+    mavenCentral()
+    google()
+}
 
 version = "1.0"
 
@@ -24,8 +29,8 @@ dependencies {
     testRuntimeOnly("org.jetbrains.kotlin:kotlin-reflect:$kotlin_version")
 }
 
-tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+kotlin {
+    jvmToolchain(21)
 }
 
 tasks.withType<Test> {
