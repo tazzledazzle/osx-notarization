@@ -15,7 +15,8 @@ class NotarizationPlugin : Plugin<Project> {
     lateinit var project: Project
     private val bundleUUIDList = ArrayList<Pair<String, String>>()
     private val bundleUUIDListFile = File("out/bundleUUIDList.txt")
-    val mountDir = File("/Users/builder/devbuilds_release")
+    val shareMount = File("/Users/builder/devbuilds_release")
+    val mountDir = shareMount
     val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
     lateinit var localReleaseDir: File
     var outDir: File = File( "out")
@@ -24,7 +25,7 @@ class NotarizationPlugin : Plugin<Project> {
         // configure plugin
         project = target
         outDir.mkdirs()
-        project.extensions.create("notarization", NotarizationPluginExtension::class.java)
+        extensions.create<NotarizationPluginExtension>("notarization")
         val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
         project.afterEvaluate {
             // add tasks
@@ -73,6 +74,7 @@ class NotarizationPlugin : Plugin<Project> {
             }
 
             task.doLast {
+                // todo: remove project reference??
                 project.exec { execSpec ->
                     execSpec.workingDir = releasesNotarizedDir
                     execSpec.executable = "mkdir"
@@ -178,9 +180,8 @@ class NotarizationPlugin : Plugin<Project> {
                             //todo: append stderr to the output and check it
                             val signed = checkSignedOutput(signedOutput.toString())
                             println("Is file '$file' signed? $signed")
-                        // val signedOutput = "codesign -dvv ${file.absolutePath}".execute()!!
+                         val signedOutput = "codesign -dvv ${file.absolutePath}".execute()!!
                         }
-                        // println()
                         catch (e: Exception) {
                             println("signing '$file'")
                             // sign
@@ -264,9 +265,6 @@ class NotarizationPlugin : Plugin<Project> {
 
     private fun createStapleAndPublishTasks(notarizationExtension: NotarizationPluginExtension) {
         val taskNames = listOf(
-//            "mountSmbfs",
-//            "createLocalReleaseDirectory",
-//            "copyBinariesFromShare",
             "mountAndCreateLocalDir",
             "zipApps",
             "checkAndSign",

@@ -12,19 +12,22 @@ dependencies {
 }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions.jvmTarget = "21"
 }
-
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+val properties = Properties()
+properties.load(FileInputStream("src/main/resources/notarization.properties"))
 notarization {
     // list of paths to binaries
-    binaryListFile = File("/Users/builder/releases_notarized/2019-10-16-maestro-2019-4.19.1016.0911.txt")
+    binaryListFile = properties.getProperty("binaryListFile")
     // location of bits to be notarized
-    workingDir = "/Users/builder/releases_notarized"
-    mountLocation = "//builder@devbuilds/maestro"
+    workingDir = properties.getProperty("workingDir")
+    mountLocation = properties.getProperty("mountLocation")
 
-    // todo: read this sensitive material from properties file
-    appSpecificPassword = "eduk-hlnz-zxyg-qhsy"
-    appleId = "tschumacher@tableau.com"
-    workspaceRootDir = "/Users/builder/p4"
-    certificateId = "Developer ID Application: Tableau Software, Inc. (QJ4XPRK37C)"
+    appSpecificPassword = properties.getProperty("appSpecificPassword")
+    appleId = properties.getProperty("appleId")
+    workspaceRootDir = properties.getProperty("workspaceRootDir")
+    certificateId = properties.getProperty("certificateId")
 }
