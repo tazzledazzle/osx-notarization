@@ -138,6 +138,20 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
     }
+    tasks.register("stapleRecursivelyAndValidate") {
+        group = "notarization"
+        dependsOn("pollAndWriteJsonTicket")
+        doLast {
+            localReleaseDir.walkTopDown().filter { it.extension == "dmg" }.forEach { file ->
+                exec {
+                    commandLine("stapler", "staple", file.absolutePath)
+                }
+                exec {
+                    commandLine("stapler", "validate", file.absolutePath)
+                }
+            }
+        }
+    }
     createNotarizationMainTasks(notarizationExtension)
     createDownloadBinariesTasks(notarizationExtension)
     createStapleAndPublishTasks(notarizationExtension)
