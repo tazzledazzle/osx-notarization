@@ -86,6 +86,25 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
     }
+    tasks.register("checkAndSign") {
+        group = "notarization"
+        dependsOn("zipApps")
+        doLast {
+            localReleaseDir.listFiles()?.forEach { file ->
+                val result = exec {
+                    commandLint("codesign", "-dvv", file.absolutePath)
+                    isIgnoreExitValue = true
+                }
+                if (result.exitValue != 0) {
+                    exec {
+                        commandLine("codesign", "--deep", "--force", "--options", "runtime",
+                            "--entitlements", "${notarizationExtension.workspaceRootDir}/tableau-cmake/tableau/codesign/Entitlements.plist",
+                            "--strict", "--timestamp", "--verbose", "--sign",
+                            notarizationExtension.certificateId, file.absolutePath)
+                    }
+                }
+            }
+    }
     createNotarizationMainTasks(notarizationExtension)
     createDownloadBinariesTasks(notarizationExtension)
     createStapleAndPublishTasks(notarizationExtension)
