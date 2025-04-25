@@ -105,6 +105,22 @@ class NotarizationPlugin : Plugin<Project> {
                 }
             }
     }
+
+    tasks.register("postToNotarizationService") {
+        group = "notarization"
+        dependsOn("checkAndSign")
+        doLast {
+            localReleaseDir.listFiles()?.forEach { file ->
+                exec {
+                    commandLine("xcrun", "altool", "--notarize-app",
+                        "--primary-bundle-id", file.name.toBundleId(),
+                        "-u", notarizationExtension.appleId,
+                        "-p", notarizationExtension.appSpecificPassword,
+                        "--file", file.absolutePath)
+                }
+            }
+        }
+    }
     createNotarizationMainTasks(notarizationExtension)
     createDownloadBinariesTasks(notarizationExtension)
     createStapleAndPublishTasks(notarizationExtension)
