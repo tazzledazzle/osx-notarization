@@ -58,7 +58,20 @@ class NotarizationPlugin : Plugin<Project> {
                 localReleaseDir.mkdirs()
             }
         }
+        tasks.register("copyBinariesFromShare") {
+            group = "notarization"
+            description = "Copies binaries from the share to the local release directory"
+            dependsOn("mountSmbfs", "createLocalReleaseDirectory")
+            doLast {
+             val binaries = notarizationExtension.binaryListFile.readLines()
+                 .map { File(notarizationExtension.shareMount, it) }
 
+                copy {
+                    from(binaries)
+                    into(localReleaseDir)
+                }
+            }
+        }
         createNotarizationMainTasks(notarizationExtension)
         createDownloadBinariesTasks(notarizationExtension)
         createStapleAndPublishTasks(notarizationExtension)
