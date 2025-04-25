@@ -1,11 +1,11 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.3.41"
+    kotlin("jvm") version "2.1.10"
     id("com.tableau.NotarizationPlugin")
 }
 
-version = "1.0"
+version = "2.0"
 
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
