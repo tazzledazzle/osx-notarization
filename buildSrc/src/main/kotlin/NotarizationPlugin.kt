@@ -121,6 +121,23 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
     }
+    tasks.register("pollAndWriteJsonTicket") {
+        group = "notarization"
+        dependsOn("postToNotarizationService")
+        doLast {
+            localReleaseDir.listFiles()?.forEach { file ->
+                val result = exec {
+                    commandLine("xcrun", "altool", "--notarization-info", file.name.toBundleId(),
+                        "-u", notarizationExtension.appleId,
+                        "-p", notarizationExtension.appSpecificPassword)
+                }
+                val jsonResponse = result.standardOutput.toString()
+                val jsonFileName = "${file.name}.notarization.json"
+                val ticketFile = File(localReleaseDir, jsonFileName)
+                ticketFile.writeText(jsonResponse)
+            }
+        }
+    }
     createNotarizationMainTasks(notarizationExtension)
     createDownloadBinariesTasks(notarizationExtension)
     createStapleAndPublishTasks(notarizationExtension)
