@@ -19,7 +19,7 @@ class NotarizationPlugin : Plugin<Project> {
     val mountDir = shareMount
     val releasesNotarizedDir = File("${System.getProperty("user.home")}/releases_notarized")
     lateinit var localReleaseDir: File
-    var outDir: File = File( "out")
+    var outDir: File = File("out")
 
     override fun apply(target: Project) {
         // configure plugin
@@ -51,6 +51,13 @@ class NotarizationPlugin : Plugin<Project> {
                 }
             }
         }
+        tasks.register("createLocalReleaseDirectory") {
+            group = "notarization"
+            description = "Creates the local release directory
+            doLast {
+                localReleaseDir.mkdirs()
+            }
+        }
 
         createNotarizationMainTasks(notarizationExtension)
         createDownloadBinariesTasks(notarizationExtension)
@@ -64,14 +71,14 @@ class NotarizationPlugin : Plugin<Project> {
         val fileShareLocation = notarizationExtension.mountLocation
         val localDirName = notarizationExtension.binaryListFile.name.replace(".txt", "")
 
-        project.tasks.register("mountSmbfs") {task ->
+        project.tasks.register("mountSmbfs") { task ->
             task.group = "notarization"
 
             task.doLast {
                 if (!mountDir.exists()) {
                     mountDir.mkdirs()
                 }
-                if (mountDir.listFiles()?.size == 0){
+                if (mountDir.listFiles()?.size == 0) {
                     // mount dir
                     project.exec { execSpec ->
                         execSpec.workingDir = File("${System.getProperty("user.home")}/")
@@ -82,7 +89,7 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        project.tasks.register("createLocalReleaseDirectory"){ task ->
+        project.tasks.register("createLocalReleaseDirectory") { task ->
             task.group = "notarization"
             task.description = "create release local dir if doesn't exist"
 
@@ -140,9 +147,10 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        project.tasks.register("mountAndCreateLocalDir") {task ->
+        project.tasks.register("mountAndCreateLocalDir") { task ->
             task.group = "notarization"
-            task.dependsOn(project.tasks.named("mountSmbfs"),
+            task.dependsOn(
+                project.tasks.named("mountSmbfs"),
                 project.tasks.named("createLocalReleaseDirectory"),
                 project.tasks.named("copyBinariesFromShare")
             )
@@ -151,7 +159,7 @@ class NotarizationPlugin : Plugin<Project> {
 
     private fun createNotarizationMainTasks(notarizationExtension: NotarizationPluginExtension) {
 
-        project.tasks.register("zipApps"){ task ->
+        project.tasks.register("zipApps") { task ->
             task.group = "notarization"
             task.mustRunAfter(project.tasks.named("copyBinariesFromShare"))
 
@@ -187,39 +195,47 @@ class NotarizationPlugin : Plugin<Project> {
 
             task.doLast {
                 notarizationExtension.binariesList.forEach { file ->
-                        try {
-                            println("Checking signing status of $file")
-                            val signedOutput = ByteArrayOutputStream()
-                            val stderr = ByteArrayOutputStream()
-                            project.exec { execSpec ->
-                                execSpec.executable = "codesign"
-                                execSpec.standardOutput = signedOutput
-                                execSpec.errorOutput = stderr
-                                execSpec.isIgnoreExitValue = true
+                    try {
+                        println("Checking signing status of $file")
+                        val signedOutput = ByteArrayOutputStream()
+                        val stderr = ByteArrayOutputStream()
+                        project.exec { execSpec ->
+                            execSpec.executable = "codesign"
+                            execSpec.standardOutput = signedOutput
+                            execSpec.errorOutput = stderr
+                            execSpec.isIgnoreExitValue = true
 
-                                execSpec.args("-dvv", file.absolutePath)
-                            }
-                            //todo: append stderr to the output and check it
-                            val signed = checkSignedOutput(signedOutput.toString())
-                            println("Is file '$file' signed? $signed")
-                         val signedOutput = "codesign -dvv ${file.absolutePath}".execute()!!
+                            execSpec.args("-dvv", file.absolutePath)
                         }
-                        catch (e: Exception) {
-                            println("signing '$file'")
-                            // sign
-                            project.exec { execSpec ->
-                                execSpec.executable = "codesign"
-                                execSpec.isIgnoreExitValue = true
+                        //todo: append stderr to the output and check it
+                        val signed = checkSignedOutput(signedOutput.toString())
+                        println("Is file '$file' signed? $signed")
+                        val signedOutput = "codesign -dvv ${file.absolutePath}".execute()!!
+                    } catch (e: Exception) {
+                        println("signing '$file'")
+                        // sign
+                        project.exec { execSpec ->
+                            execSpec.executable = "codesign"
+                            execSpec.isIgnoreExitValue = true
 
-                                execSpec.args("--deep", "--force", "--options", "runtime", "--entitlements",
-                                    "${notarizationExtension.workspaceRootDir}/tableau-cmake/tableau/codesign/Entitlements.plist",
-                                    "--strict", "--timestamp", "--verbose", "--sign", "${notarizationExtension.certificateId}",
-                                    "$file"
-                                )
-                            }
+                            execSpec.args(
+                                "--deep",
+                                "--force",
+                                "--options",
+                                "runtime",
+                                "--entitlements",
+                                "${notarizationExtension.workspaceRootDir}/tableau-cmake/tableau/codesign/Entitlements.plist",
+                                "--strict",
+                                "--timestamp",
+                                "--verbose",
+                                "--sign",
+                                "${notarizationExtension.certificateId}",
+                                "$file"
+                            )
                         }
-                        println("bundle Id is ${file.name.toBundleId()}")
                     }
+                    println("bundle Id is ${file.name.toBundleId()}")
+                }
             }
         }
 
@@ -239,7 +255,7 @@ class NotarizationPlugin : Plugin<Project> {
                 }
                 bundleUUIDList.forEach { pair ->
                     bundleUUIDFile.apply {
-                        appendText("${pair.first}\n" )
+                        appendText("${pair.first}\n")
                         appendText("${pair.second}\n")
                     }
                 }
@@ -268,8 +284,16 @@ class NotarizationPlugin : Plugin<Project> {
                             execSpec.executable = "xcrun"
                             execSpec.standardOutput = baos
                             execSpec.errorOutput = stderr
-                            execSpec.args("altool", "--notarize-app", "--primary-bundle-id", file.name.toBundleId(), "-u",
-                                notarizationExtension.appleId, "-p", notarizationExtension.appSpecificPassword, "--file",
+                            execSpec.args(
+                                "altool",
+                                "--notarize-app",
+                                "--primary-bundle-id",
+                                file.name.toBundleId(),
+                                "-u",
+                                notarizationExtension.appleId,
+                                "-p",
+                                notarizationExtension.appSpecificPassword,
+                                "--file",
                                 file.absolutePath
                             )
                             execSpec.isIgnoreExitValue = true
@@ -292,7 +316,8 @@ class NotarizationPlugin : Plugin<Project> {
             "checkAndSign",
             "postToNotarizationService",
             "pollAndWriteJsonTicket",
-            "stapleRecursivelyAndValidate")
+            "stapleRecursivelyAndValidate"
+        )
 
         project.tasks.register("pollAndWriteJsonTicket") { task ->
             task.group = "notarization"
@@ -305,7 +330,8 @@ class NotarizationPlugin : Plugin<Project> {
                     exitProcess(1)
                 }
 
-                localReleaseDir = File(releasesNotarizedDir, notarizationExtension.binaryListFile.name.replace(".txt", ""))
+                localReleaseDir =
+                    File(releasesNotarizedDir, notarizationExtension.binaryListFile.name.replace(".txt", ""))
             }
 
             task.doLast {
@@ -326,18 +352,20 @@ class NotarizationPlugin : Plugin<Project> {
                         println("Bundle Id: '$bundleId', UUID: '$uuid'")
 
                         val notarizationStdOut = executeQueryNotarizationService(uuid, notarizationExtension)
-                        val notarizationInfo = parseNotarizationInfo(notarizationStdOut, notarizationExtension, bundleId)
+                        val notarizationInfo =
+                            parseNotarizationInfo(notarizationStdOut, notarizationExtension, bundleId)
                         println(notarizationInfo)
 
                         // todo: ensure that statusCode is the correct condition here
                         //   check the pair until we receive true for first
                         if (!notarizationInfo.statusCode!! && notarizationInfo.status != "success" && notarizationInfo.status != "invalid") {
                             failedNotarizationList.add(notarizationInfo)
-                        }
-                        else {
-                        // query and save the results of the notarization
-                            addResponseToUrlList(Pair(notarizationInfo.statusCode, notarizationInfo.logFileUrl),
-                                bundleResponseUrlList, bundleId)
+                        } else {
+                            // query and save the results of the notarization
+                            addResponseToUrlList(
+                                Pair(notarizationInfo.statusCode, notarizationInfo.logFileUrl),
+                                bundleResponseUrlList, bundleId
+                            )
                         }
                     }
                     jobList.add(job)
@@ -348,31 +376,31 @@ class NotarizationPlugin : Plugin<Project> {
                 }
                 jobList.clear()
 
-                while(failedNotarizationList.size > 0) {
+                while (failedNotarizationList.size > 0) {
                     val remainderList = failedNotarizationList
                     remainderList.forEach { remainder ->
-                            val job = GlobalScope.launch {
-                                delay(6000L) // wait to start the process again
-                                val notarizationStdOut =
-                                    executeQueryNotarizationService(remainder.requestUUID, remainder.notarizationExt)
-                                val notarizationInfo = parseNotarizationInfo(
-                                    notarizationStdOut,
-                                    notarizationExtension,
-                                    remainder.bundleId
-                                )
+                        val job = GlobalScope.launch {
+                            delay(6000L) // wait to start the process again
+                            val notarizationStdOut =
+                                executeQueryNotarizationService(remainder.requestUUID, remainder.notarizationExt)
+                            val notarizationInfo = parseNotarizationInfo(
+                                notarizationStdOut,
+                                notarizationExtension,
+                                remainder.bundleId
+                            )
 
-                                //   check the pair until we receive true for first
-                                if (notarizationInfo.statusCode!! && notarizationInfo.status == "success") {
-                                    // query and save the results of the notarization
-                                    addResponseToUrlList(
-                                        Pair(notarizationInfo.statusCode, notarizationInfo.logFileUrl),
-                                        bundleResponseUrlList, notarizationInfo.bundleId
-                                    )
-                                    failedNotarizationList.remove(remainder)
-                                }
+                            //   check the pair until we receive true for first
+                            if (notarizationInfo.statusCode!! && notarizationInfo.status == "success") {
+                                // query and save the results of the notarization
+                                addResponseToUrlList(
+                                    Pair(notarizationInfo.statusCode, notarizationInfo.logFileUrl),
+                                    bundleResponseUrlList, notarizationInfo.bundleId
+                                )
+                                failedNotarizationList.remove(remainder)
                             }
-                            jobList.add(job)
                         }
+                        jobList.add(job)
+                    }
                     for (job in jobList) {
                         runBlocking { job.join() }
                     }
@@ -383,13 +411,13 @@ class NotarizationPlugin : Plugin<Project> {
                     val ticketFile = File(localReleaseDir, jsonFileName)
                     println("Writing '$ticketFile'...")
                     ticketFile.apply {
-                       writeText(pair.second)
-                   }
+                        writeText(pair.second)
+                    }
                 }
             }
         }
 
-        project.tasks.register("stapleRecursivelyAndValidate") {task ->
+        project.tasks.register("stapleRecursivelyAndValidate") { task ->
             task.group = "notarization"
             task.doLast {
                 localReleaseDir.walkTopDown().forEach { file ->
@@ -413,7 +441,7 @@ class NotarizationPlugin : Plugin<Project> {
         }
 
         // lifecycle task
-        project.tasks.register("notarize") {task ->
+        project.tasks.register("notarize") { task ->
             task.group = "notarization"
             task.dependsOn(taskNames)
         }
@@ -439,7 +467,7 @@ class NotarizationPlugin : Plugin<Project> {
     private fun populateListFromFile(bundleUUIDListFile: File): List<Pair<String, String>> {
         val lines = bundleUUIDListFile.readLines()
         val pairsList = ArrayList<Pair<String, String>>()
-        for(i in 0 until lines.size step 2) {
+        for (i in 0 until lines.size step 2) {
             pairsList.add(Pair(lines[i], lines[i + 1]))
         }
         return pairsList
@@ -454,15 +482,16 @@ class NotarizationPlugin : Plugin<Project> {
         val locationSet = HashSet<String>()
 
         fileList?.readLines()?.forEach { line ->
-           // println("found: $line")
+            // println("found: $line")
             val mountFolder = "\\\\devbuilds\\release"
             val parts = line.split("\\")
             val mountLocation = "//builder@${parts[2]}/${parts[3]}"
             locationSet.add(mountLocation)
 
-            strBuffer.append(line.replace("\\", "/")
-                .replace("//devbuilds/release", mountFolder)
-                .replace("//devbuilds/maestro", mountFolder) + "\n"
+            strBuffer.append(
+                line.replace("\\", "/")
+                    .replace("//devbuilds/release", mountFolder)
+                    .replace("//devbuilds/maestro", mountFolder) + "\n"
             )
         }
         outDir.mkdirs()
@@ -483,9 +512,9 @@ class NotarizationPlugin : Plugin<Project> {
             }
         }
 
-        if (uuid is Nothing || uuid == null){
+        if (uuid is Nothing || uuid == null) {
             println("No Request UUID found in standard output. Checking standard error")
-             notarizationResult.split("\n").forEach errorOutCheck@{ line ->
+            notarizationResult.split("\n").forEach errorOutCheck@{ line ->
                 if (line.contains(ARTIFACT_ALREADY_UPLOADED)) {
                     val re = Regex("The upload ID is (\\d*\\w*-\\d*\\w*-\\d*\\w*-\\d*\\w*-\\d*\\w*)")
                     val results = re.find(line)
@@ -499,7 +528,10 @@ class NotarizationPlugin : Plugin<Project> {
         return uuid ?: ""
     }
 
-    private fun executeQueryNotarizationService(uuid: String?, notarizationExtension: NotarizationPluginExtension?): String {
+    private fun executeQueryNotarizationService(
+        uuid: String?,
+        notarizationExtension: NotarizationPluginExtension?
+    ): String {
         println("Querying RequestUUID: '$uuid' NotarizationExtension: '$notarizationExtension'")
         val baos = ByteArrayOutputStream()
         val stderr = ByteArrayOutputStream()
@@ -537,22 +569,27 @@ class NotarizationPlugin : Plugin<Project> {
                     status = parts[1].trim()
                     println("Status: ${parts[1]}")
                 }
+
                 (line.contains("Status Code:")) -> {
                     val parts = line.split(": ")
                     statusCode = (parts[1].trim().toInt() == 0)
                 }
+
                 (line.contains("RequestUUID:")) -> {
                     val parts = line.split(": ")
                     requestUUID = parts[1].trim()
                 }
+
                 (line.contains("LogFileURL:")) -> {
                     val parts = line.split(": ")
                     logFileUrl = parts[1].trim()
                 }
+
                 (line.contains("Status Message:")) -> {
                     val parts = line.split(": ")
                     statusMsg = parts[1].trim()
                 }
+
                 else -> {
                     // send extra logs to debug for now
 //                    project.logger.debug(line)
@@ -561,14 +598,15 @@ class NotarizationPlugin : Plugin<Project> {
 
 
         }
-        return NotarizationInfo(bundleId = bundleId,
+        return NotarizationInfo(
+            bundleId = bundleId,
             statusCode = statusCode,
             status = status,
             requestUUID = requestUUID,
             logFileUrl = logFileUrl,
             statusMsg = statusMsg,
             notarizationExt = notarizationExtension
-            )
+        )
     }
 
     private fun checkSignedOutput(signedOutput: String): Boolean {
@@ -578,10 +616,11 @@ class NotarizationPlugin : Plugin<Project> {
     // todo: write tests
     private fun addBinariesToBinariesList(notarizationExtension: NotarizationPluginExtension) {
         "${System.getProperty("user.home")}/devbuilds_release"
-        println( "Files List: ${notarizationExtension.binaryListFile}")
+        println("Files List: ${notarizationExtension.binaryListFile}")
         // only binaries allowed [.pkg,.zip,.dmg]
         //todo: need to ensure that no backslashes '\' are present
-        notarizationExtension.binariesList = notarizationExtension.binaryListFile.readLines().groupBy { File(it) }.keys.toList()
+        notarizationExtension.binariesList =
+            notarizationExtension.binaryListFile.readLines().groupBy { File(it) }.keys.toList()
     }
 }
 
@@ -598,7 +637,7 @@ open class NotarizationPluginExtension {
     var mountLocation: String = "//builder@devbuilds/release"
 }
 
-data class NotarizationInfo (
+data class NotarizationInfo(
     val bundleId: String? = "",
     val requestUUID: String? = "",
     val statusMsg: String? = "",
