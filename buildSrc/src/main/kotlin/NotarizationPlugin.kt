@@ -25,14 +25,36 @@ class NotarizationPlugin : Plugin<Project> {
         // configure plugin
         project = target
         outDir.mkdirs()
-        extensions.create<NotarizationPluginExtension>("notarization")
-        val notarizationExtension = project.extensions.getByName("notarization") as NotarizationPluginExtension
+
+        val notarizationExtension = extensions.create<NotarizationPluginExtension>("notarization")
         project.afterEvaluate {
-            // add tasks
-            createNotarizationMainTasks(notarizationExtension)
-            createDownloadBinariesTasks(notarizationExtension)
-            createStapleAndPublishTasks(notarizationExtension)
+            createTasks(notarizationExtension)
         }
+    }
+
+    private fun Project.createTasks(notarizationExtension: NotarizationPluginExtension) {
+
+        if (!notarizationExtension.binaryListFile.exists()) {
+            throw FileNotFoundException("You must specify a `binaryListFile` in the notarization extension!")
+        }
+
+        val localDirName = notarizationExtension.binaryListFile.nameWithoutExtension
+        val localReleaseDir = layout.buildDirectory.dir("releases_notarized/$ocalDirName").get().asFile
+
+        tasks.register("mountSmbfs") {
+            group = "notarization"
+            description = "Mounts the SMB share for notarization"
+            doLast {
+                exec {
+                    executable("mount")
+                    args("-t", "smbfs", notarizationExtension.mountLocation, notarizationExtension.shareMount)
+                }
+            }
+        }
+
+        createNotarizationMainTasks(notarizationExtension)
+        createDownloadBinariesTasks(notarizationExtension)
+        createStapleAndPublishTasks(notarizationExtension)
     }
 
     private fun createDownloadBinariesTasks(notarizationExtension: NotarizationPluginExtension) {
